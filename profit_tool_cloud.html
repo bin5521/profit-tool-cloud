@@ -2,16 +2,16 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
 <title>推广利润工具（云端实时同步版）</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 <style>
-body { font-family:"Microsoft YaHei", sans-serif; margin:10px; font-size:14px; }
+body { font-family:"Microsoft YaHei", sans-serif; margin:5px; }
 #controls { margin-bottom:10px; display:flex; flex-wrap:wrap; gap:5px; }
-button { margin-right:5px; padding:6px 10px; font-size:14px; }
-table { border-collapse:collapse; width:100%; table-layout:fixed; transition: all 0.2s; overflow-x:auto; display:block; }
+button { padding:5px 10px; font-size:14px; }
+table { border-collapse:collapse; width:100%; table-layout:fixed; transition: all 0.2s; overflow-x:auto; }
 th, td { border:1px solid #ccc; padding:5px; text-align:center; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; position:relative;}
 th .resizer { position:absolute; right:0; top:0; width:5px; cursor:col-resize; user-select:none; height:100%; }
 .group { background:#f0f0f0; cursor:pointer; font-weight:bold; }
@@ -19,18 +19,17 @@ th .resizer { position:absolute; right:0; top:0; width:5px; cursor:col-resize; u
 .loss { color:red; }
 .remark { background:#ffffe0; font-style:italic; color:blue; text-align:left; }
 #contextMenu { position:absolute; display:none; list-style:none; padding:5px; background:#fff; border:1px solid #ccc; z-index:999; }
-#contextMenu li { padding: 2px 10px; cursor:pointer; }
+#contextMenu li { padding:2px 10px; cursor:pointer; }
 #contextMenu li:hover { background:#eee; }
-#loading { text-align:center; margin-top:50px; font-size:18px; color:#888; }
-@media screen and (max-width:600px){
+
+/* 手机优化 */
+@media(max-width:768px){
     th, td { font-size:12px; padding:3px; }
-    button { font-size:12px; padding:4px 8px; }
+    table { font-size:12px; }
 }
 </style>
 </head>
 <body>
-
-<div id="loading">正在加载，请稍候...</div>
 
 <div id="controls">
     <input type="file" id="fileInput" accept=".xlsx,.xls">
@@ -38,10 +37,12 @@ th .resizer { position:absolute; right:0; top:0; width:5px; cursor:col-resize; u
     <button onclick="exportExcel()">导出结果</button>
 </div>
 
-<table id="dataTable">
-    <thead id="tableHead"></thead>
-    <tbody id="tableBody"></tbody>
-</table>
+<div style="overflow-x:auto;">
+    <table id="dataTable">
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+</div>
 
 <ul id="contextMenu">
     <li onclick="addRemarkAbove()">上方增加备注行</li>
@@ -75,22 +76,17 @@ let zoomScale = 1.0, resizingCol=null, startX=0, startWidth=0;
 document.getElementById("fileInput").addEventListener("change", handleFile, false);
 document.addEventListener("click", ()=>{ document.getElementById("contextMenu").style.display='none'; });
 document.addEventListener("wheel", e=>{
-    if(e.ctrlKey){ 
-        e.preventDefault(); 
-        zoomScale = Math.min(Math.max(zoomScale + (e.deltaY<0?0.1:-0.1),0.5),2.0);
-        renderTable();
-    }
+    if(e.ctrlKey){ e.preventDefault(); zoomScale = Math.min(Math.max(zoomScale + (e.deltaY<0?0.1:-0.1),0.5),2.0); renderTable(); }
 },{passive:false});
 
 function handleFile(e){
-    const file=e.target.files[0]; 
-    const reader=new FileReader();
-    reader.onload=function(ev){
-        const dataArray = new Uint8Array(ev.target.result);
-        const wb = XLSX.read(dataArray, {type:'array'});
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = function(ev){
+        const wb = XLSX.read(ev.target.result,{type:'binary'});
         const ws = wb.Sheets[wb.SheetNames[0]];
-        let raw=XLSX.utils.sheet_to_json(ws,{defval:""});
-        data=raw.map(row=>{
+        let raw = XLSX.utils.sheet_to_json(ws,{defval:""});
+        data = raw.map(row=>{
             let d={};
             d["日期"]=row["日期"]||""; 
             d["商品ID"]=row["商品ID"]||""; 
@@ -110,9 +106,8 @@ function handleFile(e){
         data.sort((a,b)=> new Date(a["日期"])-new Date(b["日期"]));
         saveToFirebase();
         renderTable();
-        document.getElementById('loading').style.display='none';
     };
-    reader.readAsArrayBuffer(file);
+    reader.readAsBinaryString(file);
 }
 
 // -------- 渲染表格 --------
@@ -121,15 +116,13 @@ function renderTable(){
     const tbody=document.getElementById("tableBody");
     thead.innerHTML="<tr>"+cols.map(c=>`<th style="width:${colWidths[c]*zoomScale}px">${c}<div class='resizer'></div></th>`).join("")+"</tr>";
     tbody.innerHTML="";
-
     thead.querySelectorAll("th").forEach((th,i)=>{
-        const resizer=th.querySelector(".resizer");
-        resizer.onmousedown=function(e){ resizingCol=cols[i]; startX=e.pageX; startWidth=colWidths[resizingCol]; document.onmousemove=resizeColumn; document.onmouseup=stopResize; };
+        const resizer = th.querySelector(".resizer");
+        resizer.onmousedown = function(e){ resizingCol=cols[i]; startX=e.pageX; startWidth=colWidths[resizingCol]; document.onmousemove = resizeColumn; document.onmouseup = stopResize; };
     });
 
     let products=[...new Set(data.map(d=>d["商品名称"]))];
-    const fragment=document.createDocumentFragment();
-
+    let fragment=document.createDocumentFragment();
     products.forEach(product=>{
         if(!(product in collapsed)) collapsed[product]=false;
         let icon=collapsed[product]?"▶":"▼";
@@ -137,8 +130,8 @@ function renderTable(){
         tr.innerHTML=`<td colspan="${cols.length}">${icon} ${product}</td>`;
         tr.onclick=()=>{ collapsed[product]=!collapsed[product]; renderTable(); };
         fragment.appendChild(tr);
-        if(collapsed[product]) return;
 
+        if(collapsed[product]) return;
         data.filter(d=>d["商品名称"]===product).forEach(row=>{
             let trData=document.createElement("tr"); trData.dataset.idx=data.indexOf(row);
             trData.innerHTML=cols.map(c=>{
@@ -146,7 +139,7 @@ function renderTable(){
                 if(c==='平台扣点' || c==='电商税') val=(val*100).toFixed(0)+'%';
                 if(c==='净利润率') val=val.toFixed(2)+'%';
                 if(c==='净利润') val=`<span class="${row["净利润"]>=0?"profit":"loss"}">${val}</span>`;
-                return `<td style="width:${colWidths[c]*zoomScale}px" ${c==='实际利润'||c==='预设ROI'?'contenteditable="true"':""} ${c==='商品ID'?'onclick="copyCell(this)"':""}>${val}</td>`;
+                return `<td style="width:${colWidths[c]*zoomScale}px" ${c==='实际利润'||c==='预设ROI'?'contenteditable="true"':""} ${c==='商品ID'?'onclick="copyCell(this)"':""} >${val}</td>`;
             }).join("");
             trData.oncontextmenu=(e)=>{ e.preventDefault(); selectedRowIndex="row_"+trData.dataset.idx; selectedCell=e.target; showContextMenu(e.pageX,e.pageY); };
             fragment.appendChild(trData);
@@ -162,7 +155,6 @@ function renderTable(){
             }
         });
     });
-
     tbody.appendChild(fragment);
 }
 
@@ -170,21 +162,21 @@ function renderTable(){
 function resizeColumn(e){ if(!resizingCol) return; let delta=e.pageX-startX; colWidths[resizingCol]=Math.max(startWidth+delta/zoomScale,30); renderTable(); }
 function stopResize(){ document.onmousemove=null; document.onmouseup=null; resizingCol=null; }
 
-// -------- 右键菜单功能 --------
+// -------- 右键菜单 --------
 function copyCell(td){ if(!td) td=selectedCell; navigator.clipboard.writeText(td.textContent); alert("已复制："+td.textContent); }
 function showContextMenu(x,y){ const menu=document.getElementById("contextMenu"); menu.style.left=x+"px"; menu.style.top=y+"px"; menu.style.display='block'; }
 function addRemarkAbove(){ if(selectedRowIndex===null) return; remarks["row_"+Date.now()] = ""; renderTable(); }
 function addRemarkBelow(){ if(selectedRowIndex===null) return; remarks[selectedRowIndex] = ""; renderTable(); }
 function deleteRow(){ if(selectedRowIndex===null) return; let idx=parseInt(selectedRowIndex.replace("row_","")); data.splice(idx,1); if(selectedRowIndex in remarks) delete remarks[selectedRowIndex]; renderTable(); }
-
-// -------- 清空与导出 --------
 function clearData(){ data=[]; remarks={}; collapsed={}; renderTable(); }
+
+// -------- 导出 Excel --------
 function exportExcel(){ 
     let wb=XLSX.utils.book_new();
     let ws_data=[cols];
     data.forEach(row=>{
         ws_data.push(cols.map(c=>{
-            if(c==='平台扣点' || c==='电商税') return (row[c]*100).toFixed(0)+'%';
+            if(c==='平台扣点'||c==='电商税') return (row[c]*100).toFixed(0)+'%';
             if(c==='净利润率') return row[c].toFixed(2)+'%';
             return row[c];
         }));
@@ -199,15 +191,16 @@ function exportExcel(){
 // -------- Firebase 实时同步 --------
 tableRef.onSnapshot((doc)=>{
     if(doc.exists){
-        const d = doc.data();
-        data = d.data || [];
-        remarks = d.remarks || {};
+        const d=doc.data();
+        data=d.data||[];
+        remarks=d.remarks||{};
         renderTable();
-        document.getElementById('loading').style.display='none';
     }
 });
 
+// -------- 保存 Firebase --------
 function saveToFirebase(){ tableRef.set({data:data, remarks:remarks}); }
+
 </script>
 </body>
 </html>
