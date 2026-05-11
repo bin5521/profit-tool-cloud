@@ -17,6 +17,7 @@ th .resizer { position:absolute; right:0; top:0; width:5px; cursor:col-resize; u
 .profit { color:green; }
 .loss { color:red; }
 .remark { background:#ffffe0; font-style:italic; color:blue; text-align:left; }
+.total { background:#e0e0ff; font-weight:bold; }
 #contextMenu { position:absolute; display:none; list-style:none; padding:5px; background:#fff; border:1px solid #ccc; z-index:1000; }
 #contextMenu li { padding: 2px 10px; cursor:pointer; }
 #contextMenu li:hover { background:#eee; }
@@ -62,7 +63,7 @@ const tableRef = db.collection("table_data").doc("table");
 // -------- 全局变量 --------
 let data=[], remarks={}, collapsed={}, selectedRowIndex=null, selectedCell=null;
 const cols=["日期","商品ID","商品名称","成交花费","净交易额","间接成交笔数","曝光量","点击量","平台扣点","电商税","实际利润","净利润","净利润率","预设ROI","实际ROI"];
-let colWidths = { "日期":100,"商品ID":100,"商品名称":150,"成交花费":100,"净交易额":100,"间接成交笔数":80,"曝光量":80,"点击量":80,"平台扣点":80,"电商税":80,"实际利润":100,"净利润":100,"净利润率":80,"预设ROI":80,"实际ROI":80 };
+let colWidths = { "日期":90,"商品ID":80,"商品名称":120,"成交花费":90,"净交易额":90,"间接成交笔数":80,"曝光量":80,"点击量":80,"平台扣点":70,"电商税":70,"实际利润":90,"净利润":90,"净利润率":70,"预设ROI":70,"实际ROI":70 };
 let zoomScale = 1.0, resizingCol=null, startX=0, startWidth=0;
 
 // -------- 文件导入（追加模式） --------
@@ -143,16 +144,33 @@ function renderTable(){
                 if(c==='净利润率') val=val.toFixed(2)+'%';
                 if(c==='净利润') val=`<span class="${row["净利润"]>=0?"profit":"loss"}">${val}</span>`;
                 if(c==='实际利润'||c==='预设ROI'){
-                    return `<td style="width:${colWidths[c]*zoomScale}px"><input class="cell-input" data-idx="${data.indexOf(row)}" data-col="${c}" value="${val}"></td>`;
+                    return `<td style="width:${colWidths[c]*zoomScale}px"><input class="cell-input" data-idx="${data.indexOf(row)}" data-col="${c}" value="${row[c]}"></td>`;
                 }
                 return `<td style="width:${colWidths[c]*zoomScale}px">${val}</td>`;
             }).join("");
+            trData.oncontextmenu=(e)=>{ e.preventDefault(); selectedRowIndex="row_"+trData.dataset.idx; selectedCell=e.target; showContextMenu(e.pageX,e.pageY); };
             fragment.appendChild(trData);
         });
     });
+
+    // 总计行
+    let total={};
+    ["成交花费","净交易额","间接成交笔数","曝光量","点击量","实际利润","净利润"].forEach(col=>{
+        total[col]=data.reduce((sum,r)=>sum+(parseFloat(r[col])||0),0);
+    });
+    total["净利润率"]=total["净交易额"]?+(total["净利润"]/total["净交易额"]*100).toFixed(2):0;
+    total["实际ROI"]=total["成交花费"]?+(total["净交易额"]/total["成交花费"]).toFixed(2):0;
+    let trTotal=document.createElement("tr"); trTotal.className="total";
+    trTotal.innerHTML=cols.map(c=>{
+        if(c==="商品名称") return "<td>总计</td>";
+        if(total[c]!==undefined) return `<td>${total[c]}</td>`;
+        return "<td></td>";
+    }).join("");
+    fragment.appendChild(trTotal);
+
     tbody.appendChild(fragment);
 
-    // 事件绑定 - 输入框回车保存计算
+    // 回车计算
     tbody.querySelectorAll("input.cell-input").forEach(input=>{
         input.onkeydown=e=>{
             if(e.key==="Enter"){
@@ -189,13 +207,7 @@ function clearData(){ data=[]; remarks={}; collapsed={}; saveToFirebase(); rende
 function exportExcel(){ 
     let wb=XLSX.utils.book_new();
     let ws_data=[cols];
-    data.forEach(row=>{
-        ws_data.push(cols.map(c=>{
-            if(c==='平台扣点'||c==='电商税') return (row[c]*100).toFixed(0)+'%';
-            if(c==='净利润率') return row[c].toFixed(2)+'%';
-            return row[c];
-        }));
-    });
+    data.forEach(row=>{ ws_data.push(cols.map(c=>row[c])); });
     let ws=XLSX.utils.aoa_to_sheet(ws_data);
     XLSX.utils.book_append_sheet(wb, ws,"推广利润");
     XLSX.writeFile(wb,"推广利润数据总览.xlsx");
@@ -213,7 +225,7 @@ tableRef.onSnapshot(doc=>{
 
 // -------- 保存 Firebase --------
 function saveToFirebase(){ tableRef.set({data:data, remarks:remarks}); }
-</script>
 
+</script>
 </body>
 </html>
